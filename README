@@ -49,18 +49,3 @@ FILES:
         come tutti gli spazi e tabulazioni in testa ad ogni linea.
 
 [Mirco Bertelli] -------------------------------------------------- [17/04/2013]
-
-
-
-ChangeLog OASIS v1.1:
----------------------
-	ora crea un installer che una volta eseguito genera anche uno script per la
-	disinstallazione del software; tale script prende nome da quello specificato
-	nel file di configurazione (OASISfile) usato per assemblare l'installer
-	seguendo questo pattern:
-	
-		<nome_programma>.remove
-	
-	Lo script di disinstallazione viene memorizzato in: /usr/local/bin
-
-[Mirco Bertelli] -------------------------------------------------- [20/04/2013]
