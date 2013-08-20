@@ -1,0 +1,66 @@
+
+                                         _
+                          ___   __ _ ___(_)___ 
+                         / _ \ / _` / __| / __|
+                        | (_) | (_| \__ \ \__ \
+                         \___/ \__,_|___/_|___/
+             # Oasis is an Assembler of Self-Installing Script #
+
+
+
+
+USO:
+    oasis [-h | -v] [ -f oasisfile ]
+
+OASIS: Oasis is an Assembler of Self-Installing Script
+Permette di creare uno script auto-installante.
+
+OPZIONI:
+    -f cmd | --oasis-file oasisfile
+        permette di specificare un file di configurazione diverso da quello di
+        di default (OASISfile). Vedi la sezione FILES per la sintassi da usare
+        in un file di configurazione OASIS.
+
+    -h | --help
+        mostra questa guida utente.
+
+    -v | --version
+        mostra le informazioni sulla versione del programma.
+
+FILES:
+    OASISfile
+        File di configurazione specifico per ogni progetto da creare nella
+        directory dove risiedono i file sorgenti.
+
+        Permette di specificare il nome del programma per il quale si vuole
+        creare il setup, l'elenco dei file che dovranno essere installati e le
+        relative locazioni.
+
+        La sintassi permette di inserire i commenti in stile bash.
+
+        Esclusi i commenti, la prima riga deve esprimere il nome del programma;
+        per esempio se scriviamo foo verra' creato un setup di nome foo.setup
+
+        Le successive linee verranno interpretate a coppie di 2:
+         - la prima contiene il del file che si vuole installare;
+         - la seconda contiene il path di destinazione del file suddetto.
+
+        Linee vuote o contenete commenti in stile bash verranno ignorate così
+        come tutti gli spazi e tabulazioni in testa ad ogni linea.
+
+[Mirco Bertelli] -------------------------------------------------- [17/04/2013]
+
+
+
+ChangeLog OASIS v1.1:
+---------------------
+	ora crea un installer che una volta eseguito genera anche uno script per la
+	disinstallazione del software; tale script prende nome da quello specificato
+	nel file di configurazione (OASISfile) usato per assemblare l'installer
+	seguendo questo pattern:
+	
+		<nome_programma>.remove
+	
+	Lo script di disinstallazione viene memorizzato in: /usr/local/bin
+
+[Mirco Bertelli] -------------------------------------------------- [20/04/2013]

@@ -1,0 +1,310 @@
+#!/bin/bash
+
+# ritorna true se la stringa passata ha il formato:
+#     #@ BEGINE nome_file
+# in questo caso stampa la stringa "nome_file"
+# altrimenti ritrona false e stampa la stringa vuota.
+# NOTA: prima e dopo BEGIN è necessario almeno uno spazio.
+function is_begin() {
+	local flag=""
+	for tmp in $1; do
+		if [ -z "$flag" ]; then
+			if [ "$tmp" == "BEGIN" ]; then
+				flag="1"
+			fi
+		else
+			echo "${tmp%% *}"
+			return 0
+		fi
+	done
+	echo ""
+	return 1
+}
+
+# ritorna true se la stringa passata ha il formato:
+#     #@ PUT nome_file
+# in questo caso stampa la stringa "nome_file"
+# altrimenti ritrona false e stampa la stringa vuota.
+# NOTA: prima e dopo PUT è necessario almeno uno spazio.
+function is_put() {
+	local flag=""
+	for tmp in $1; do
+		if [ -z "$flag" ]; then
+			if [ "$tmp" == "PUT" ]; then
+				flag="1"
+			fi
+		else
+			echo "${tmp%% *}"
+			return 0
+		fi
+	done
+	echo ""
+	return 1
+}
+
+# ritorna true se la stringa passata ha il formato:
+#     #@ CODE
+# altrimenti ritrona false.
+# NOTA: prima di CODE è necessario almeno uno spazio.
+function is_code() {
+	local flag=""
+	for tmp in $1; do
+		if [ -z "$flag" ]; then
+			if [ "$tmp" == "#@" ]; then
+				flag="1"
+			fi
+		else
+			if [ "$tmp" = "CODE" ]; then
+				return 0
+			else
+				return 1
+			fi
+		fi
+	done
+	return 1
+}
+
+# ritorna true se la stringa passata ha il formato:
+#     #@ END
+# altrimenti ritrona false.
+# NOTA: prima di END è necessario almeno uno spazio.
+function is_end() {
+	local flag=""
+	for tmp in $1; do
+		if [ -z "$flag" ]; then
+			if [ "$tmp" == "#@" ]; then
+				flag="1"
+			fi
+		else
+			if [ "$tmp" = "END" ]; then
+				return 0
+			else
+				return 1
+			fi
+		fi
+	done
+	return 1
+}
+
+# ritrona true se la stringa passata è un commento MiBe,
+# false altrimenti.
+# NOTA: un commento MiBe inizia con la sequenza "#@ " e termina con un newline.
+function is_mibe_comment() {
+	for tmp in $1; do
+		if [ "$tmp" = "#@" ]; then
+			return 0
+		else
+			return 1
+		fi
+	done
+	return 1
+}
+
+# ritrona true se la stringa passata è un commento BASH,
+# false altrimenti.
+# NOTA: un commento BASH inizia con la sequenza "#" e termina con un newline.
+function is_bash_comment() {
+	for tmp in $1; do
+		if [ "${tmp:0:1}" = "#" ]; then
+			return 0
+		else
+			return 1
+		fi
+	done
+	return 1
+}
+
+function check_root_rights() {
+	if [ "$( id -u )" -ne 0 ]; then
+		echo "sono necessari i diritti di root per l'installazione" >&2
+		echo "installazione annullata" >&2
+		exit 1
+	fi
+}
+
+# se non si hanno i diritti di root l'installazine finisce qui.
+check_root_rights
+
+log_file="installed_files.list"
+touch "$log_file"
+
+# questa variabile viene definita dall'assemblatore OASIS.
+# programm_name=...
+
+tmp_file=""
+
+file_name=""
+file_path=""
+
+state="find_begin"
+line_num=0
+
+# legge se stesso riga per riga...
+cat "$0" | while true; do
+	if [ "$state" != "abort_installation" ]; then
+		if ! read -r line; then
+			if [ "$state" = "find_begin" ]; then
+				# le read è fallita ed o ho completato almeno un blocco BEGIN-END
+				# oppure non c'erano blocchi.
+				exit 0
+			else
+				# la read è fallita e non ho concluso almeno un blocco BEGIN-END
+				echo -e "line: $line_num -- fine inattesa del file, blocco BEGIN senza END\n  installazione annullata" >&2
+				state="abort_installation"
+			fi
+		else
+			line_num=$(( line_num + 1 ))
+		fi
+	fi
+	
+	#line_num=$(( line_num + 1 ))
+	if [ "$state" = "find_begin" ]; then
+		if is_mibe_comment "$line"; then
+			if file_name="$( is_begin "$line" )"; then
+				state="find_put"
+			else
+				echo -e "linea: $line_num -- atteso BEGIN\n  installazione annullata" >&2
+				state="abort_installation"
+			fi
+		else
+			continue
+		fi
+	elif [ "$state" = "find_put" ]; then
+		if is_mibe_comment "$line"; then
+			if file_path="$( is_put "$line" )"; then
+				state="find_code"
+			else
+				echo -e "linea: $line_num -- atteso PUT\n  installazione annullata" >&2
+				state="abort_installation"
+			fi
+		elif is_bash_comment "$line"; then
+			continue
+		elif [ "${#line}" = "0" ]; then
+			continue
+		else
+			echo -e "linea: $line_num -- atteso PUT o un commento BASH\n  installazione annullata" >&2
+			state="abort_installation"
+		fi
+	elif [ "$state" = "find_code" ]; then
+		if is_mibe_comment "$line"; then
+			if is_code "$line"; then
+				state="find_end"
+				tmp_file="$( mktemp script_XXXXX.tmp)"
+			else
+				echo -e "linea: $line_num -- atteso CODE\n  installazione annullata" >&2
+				state="abort_installation"
+			fi
+		elif is_bash_comment "$line"; then
+			continue
+		elif [ "${#line}" = "0" ]; then
+			continue
+		else
+			echo -e "linea: $line_num -- atteso CODE o un commento BASH\n  installazione annullata" >&2
+			state="abort_installation"
+		fi
+	elif [ "$state" = "find_end" ]; then
+		if is_mibe_comment "$line"; then
+			if is_end "$line"; then
+				if cp "$tmp_file" "$file_path/$file_name" &> /dev/null; then
+					chmod 755 "$file_path/$file_name"
+					rm "$tmp_file"
+					echo "$file_name instalato in $file_path"
+					echo "$file_path/$file_name" >> "$log_file"
+					tmp_file=""
+					file_name=""
+					file_path=""
+					state="find_begin"
+				else
+					echo -e "impossibile spostare $file_name in $file_path\n  installazione annullata" >&2
+					state="abort_installation"
+				fi
+			else
+				echo -e "line: $line_num -- atteso END\n  installazione annullata" >&2
+				state="abort_installation"
+			fi
+		else
+			echo "$line" >> "$tmp_file"
+		fi
+	else # abort_installation
+		cleaned=""
+		garbage=""
+		
+		echo -e "\nripristino del sistema in corso..." >&2
+		
+		if ! [ -z "$tmp_file" ]; then
+			if ! rm "$tmp_file" &>/dev/null; then
+				garbage="$garbage $tmp_file"
+				cleaned="1"
+			fi
+		fi
+			
+		cat "$log_file" 2>/dev/null | while read file; do
+			if ! rm "$file" &>/dev/null; then
+				echo -e "$file: impossibile rimuovere" >&2
+				garbage="$garbage $file"
+				cleaned="1"
+			else
+				echo -e "$file: rimosso" >&2
+			fi
+		done
+		
+		if ! rm "$log_file" &> /dev/null; then
+			garbage="$garbage $log_file"
+			cleaned="1"
+		fi
+
+		echo -e "-------" >&2
+		if [ -z "$cleaned" ]; then
+			echo -e "sistema ripristinato\n" >&2
+		else
+			echo -e "impossibile ripristinare il sistema\n" >&2
+			echo -e "non è stato possibile rimuovere i seguenti file:" >&2
+			for f in $garbage; do
+				echo "$f" >&2
+			done
+		fi
+		#sleep 10
+		#echo "exit 1"
+		exit 1
+	fi
+done
+
+if [ "$?" -ne 0 ]; then
+# il processo figlio è terminato in errore
+# quindi l'istallazione è stata annullata e il distema già ripulito
+#	echo "il figlio è terminato male"
+	exit 1
+else
+# il figlio è terminato bene e quindi se c'era almeno un file da installare
+# ha lasciato il file di log che va eliminato
+#	echo "il figlio è terminato bene"
+	if [ -f "$log_file" ]; then
+		# creo il file di disinstallazione
+		echo '#!/bin/bash' >> "$programm_name.remove"
+		echo 'if [ "$( id -u )" -ne 0 ]; then' >> "$programm_name.remove"
+		echo '    echo "sono necessari i diritti di root per installare" >&2' >> "$programm_name.remove"
+		echo '    echo "installazione annullata" >&2' >> "$programm_name.remove"
+		echo '    exit 1' >> "$programm_name.remove"
+		echo 'fi' >> "$programm_name.remove"
+		
+		cat "$log_file" | while read l; do
+			echo "rm $l" >> "$programm_name.remove"
+		done
+		
+		echo 'rm "$0"' >> "$programm_name.remove"
+		echo "exit 0" >> "$programm_name.remove"
+		
+		chmod 555 "$programm_name.remove"
+		# sposto il file in /usr/local/bin
+		mv "$programm_name.remove" /usr/local/bin
+		
+		echo -e "installazione completata"
+		echo -e "usare il comando \"$programm_name.remove\" per rimuovere il programma"
+		rm "$log_file"
+	else
+		echo -e "non è stato trovato nessun file da installare"
+	fi
+	#echo "exit 0"
+	exit 0
+fi
+
